@@ -126,13 +126,16 @@ const App = (() => {
             }
         });
 
-        // Refresh button
-        document.getElementById('refreshAllBtn').addEventListener('click', async () => {
-            const btn = document.getElementById('refreshAllBtn');
-            btn.classList.add('spinning');
-            await refreshDashboard();
-            btn.classList.remove('spinning');
-            showToast('已重新整理所有資料', 'success');
+        // Clear Cache button
+        document.getElementById('clearCacheBtn').addEventListener('click', () => {
+            if (confirm('確定要清除所有快取資料嗎？')) {
+                localStorage.clear();
+                sessionStorage.clear();
+                showToast('已清除所有快取，即將重新載入頁面...', 'success');
+                setTimeout(() => {
+                    location.reload();
+                }, 1500);
+            }
         });
     }
 
