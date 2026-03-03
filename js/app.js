@@ -18,7 +18,7 @@ const App = (() => {
         initIcons();
         initClock();
         initNavigation();
-        initSearch();
+
         initWatchlistPage();
         initAnalysisPage();
         initSignalsPage();
@@ -173,78 +173,6 @@ const App = (() => {
         document.getElementById('mainContent').addEventListener('click', () => {
             document.getElementById('sidebar').classList.remove('open');
         });
-    }
-
-    // ============================
-    // Global Search
-    // ============================
-
-    function initSearch() {
-        const input = document.getElementById('globalSearch');
-        const results = document.getElementById('searchResults');
-
-        input.addEventListener('input', async () => {
-            const query = input.value.trim();
-            if (query.length === 0) {
-                results.classList.add('hidden');
-                return;
-            }
-            const matches = await StockAPI.searchStock(query);
-            renderSearchResults(results, matches, async (stock) => {
-                input.value = '';
-                results.classList.add('hidden');
-                navigateTo('analysis');
-
-                // Show loading immediately
-                showLoading(true);
-                // When clicking the search result, fetchQuote will verify and save the name
-                try {
-                    await StockAPI.fetchQuote(stock.symbol);
-                    loadAnalysis(stock.symbol);
-                } catch (e) {
-                    showLoading(false);
-                    showToast('找不到此股票代碼', 'error');
-                }
-            });
-        });
-
-        input.addEventListener('focus', () => {
-            if (input.value.trim().length > 0) {
-                results.classList.remove('hidden');
-            }
-        });
-
-        document.addEventListener('click', (e) => {
-            if (!input.contains(e.target) && !results.contains(e.target)) {
-                results.classList.add('hidden');
-            }
-        });
-    }
-
-    function renderSearchResults(container, stocks, onSelect) {
-        if (stocks.length === 0) {
-            container.innerHTML = '<div class="search-result-item"><span class="stock-name">找不到相符的股票</span></div>';
-            container.classList.remove('hidden');
-            return;
-        }
-
-        container.innerHTML = stocks.map(stock => `
-            <div class="search-result-item" data-symbol="${stock.symbol}" data-name="${stock.name}">
-                <div>
-                    <span class="stock-symbol">${stock.symbol}</span>
-                    <span class="stock-name" style="margin-left: 8px;">${stock.name}</span>
-                </div>
-                <span class="stock-name">${stock.industry}</span>
-            </div>
-        `).join('');
-
-        container.querySelectorAll('.search-result-item').forEach(item => {
-            item.addEventListener('click', () => {
-                onSelect({ symbol: item.dataset.symbol, name: item.dataset.name });
-            });
-        });
-
-        container.classList.remove('hidden');
     }
 
     // ============================
