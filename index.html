@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StockPulse — 智能股票追蹤與分析平台</title>
+    <meta name="description" content="StockPulse 提供即時股票報價、K 線圖分析、技術指標計算與買賣建議，助您做出更聰明的投資決策。">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+
+    <!-- Lightweight Charts -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@0.309.0/dist/umd/lucide.min.js"></script>
+
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <!-- Sidebar Navigation -->
+    <nav id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 32 32" fill="none">
+                        <defs>
+                            <linearGradient id="logoGrad" x1="0" y1="0" x2="32" y2="32">
+                                <stop offset="0%" stop-color="#6C5CE7" />
+                                <stop offset="100%" stop-color="#00D2FF" />
+                            </linearGradient>
+                        </defs>
+                        <path d="M4 24L10 16L16 20L22 8L28 12" stroke="url(#logoGrad)" stroke-width="3"
+                            stroke-linecap="round" stroke-linejoin="round" />
+                        <circle cx="28" cy="12" r="3" fill="#00D2FF" />
+                    </svg>
+                </div>
+                <span class="logo-text">StockPulse</span>
+            </div>
+        </div>
+
+        <ul class="nav-menu">
+            <li class="nav-item active" data-page="dashboard">
+                <i data-lucide="layout-dashboard"></i>
+                <span>儀表板</span>
+            </li>
+            <li class="nav-item" data-page="analysis">
+                <i data-lucide="candlestick-chart"></i>
+                <span>技術分析</span>
+            </li>
+            <li class="nav-item" data-page="signals">
+                <i data-lucide="zap"></i>
+                <span>買賣建議</span>
+            </li>
+        </ul>
+
+        <div class="sidebar-footer">
+            <div class="market-status" id="marketStatus">
+                <div class="status-dot"></div>
+                <span>市場狀態載入中...</span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Mobile nav toggle -->
+    <button id="mobileNavToggle" class="mobile-nav-toggle">
+        <i data-lucide="menu"></i>
+    </button>
+
+    <!-- Main Content -->
+    <main id="mainContent" class="main-content">
+
+        <!-- Top Bar -->
+        <header class="top-bar">
+            <div class="search-container">
+                <i data-lucide="search" class="search-icon"></i>
+                <input type="text" id="globalSearch" class="search-input" placeholder="搜尋股票代碼或名稱 (例如: 2330、台積電)..."
+                    autocomplete="off">
+                <div id="searchResults" class="search-results hidden"></div>
+            </div>
+            <div class="top-bar-actions">
+                <button id="refreshAllBtn" class="btn-icon" title="重新整理所有資料">
+                    <i data-lucide="refresh-cw"></i>
+                </button>
+                <div class="clock" id="clock"></div>
+            </div>
+        </header>
+
+        <!-- Page: Dashboard (Merged Watchlist) -->
+        <section id="page-dashboard" class="page active">
+            <div class="page-header">
+                <h1>儀表板</h1>
+                <p class="page-subtitle">管理您的自選股票與市場概覽</p>
+            </div>
+
+            <div class="watchlist-toolbar">
+                <div class="add-stock-form">
+                    <div class="input-group">
+                        <i data-lucide="search" class="input-icon"></i>
+                        <input type="text" id="addStockInput" class="form-input" placeholder="輸入股票代碼 (例如: 2330)..."
+                            autocomplete="off">
+                        <div id="addStockResults" class="search-results hidden"></div>
+                    </div>
+                    <button id="addStockBtn" class="btn btn-primary">
+                        <i data-lucide="plus"></i>
+                        <span>加入追蹤</span>
+                    </button>
+                </div>
+                <button id="refreshWatchlistBtn" class="btn btn-outline">
+                    <i data-lucide="refresh-cw"></i>
+                    <span>重新整理</span>
+                </button>
+            </div>
+
+            <div class="card">
+                <div class="card-body no-padding">
+                    <table class="data-table" id="watchlistTable">
+                        <thead>
+                            <tr>
+                                <th>股票代碼</th>
+                                <th>名稱</th>
+                                <th class="text-right">現價</th>
+                                <th class="text-right">漲跌</th>
+                                <th class="text-right">漲跌幅</th>
+                                <th class="text-right">成交量</th>
+                                <th class="text-center">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="watchlistBody">
+                            <tr class="empty-row">
+                                <td colspan="7">
+                                    <div class="empty-state">
+                                        <i data-lucide="inbox"></i>
+                                        <p>追蹤清單是空的，請新增股票開始追蹤</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+
+
+        <!-- Page: Analysis -->
+        <section id="page-analysis" class="page">
+            <div class="page-header">
+                <h1>技術分析</h1>
+                <p class="page-subtitle">深入研究股票走勢與技術指標</p>
+            </div>
+
+            <div class="analysis-toolbar">
+                <div class="input-group">
+                    <i data-lucide="search" class="input-icon"></i>
+                    <input type="text" id="analysisStockInput" class="form-input" placeholder="輸入股票代碼進行分析..."
+                        autocomplete="off">
+                    <div id="analysisStockResults" class="search-results hidden"></div>
+                </div>
+                <div class="period-selector">
+                    <button class="period-btn active" data-range="3mo">3個月</button>
+                    <button class="period-btn" data-range="6mo">6個月</button>
+                    <button class="period-btn" data-range="1y">1年</button>
+                    <button class="period-btn" data-range="2y">2年</button>
+                </div>
+            </div>
+
+            <div class="analysis-stock-info card" id="analysisStockInfo" style="display:none;">
+                <div class="stock-info-header">
+                    <div class="stock-info-left">
+                        <h2 id="analysisStockName">--</h2>
+                        <span class="stock-code" id="analysisStockCode">--</span>
+                    </div>
+                    <div class="stock-info-center"
+                        style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 40px; margin: 0 auto;">
+                        <span style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">系統評分與建議</span>
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <span id="analysisScore" class="mono" style="font-weight: 700; font-size: 1.5rem;">--</span>
+                            <span id="analysisAction" class="action-badge"
+                                style="font-size: 0.85rem; padding: 6px 16px;">--</span>
+                        </div>
+                    </div>
+                    <div class="stock-info-right">
+                        <span class="stock-price" id="analysisStockPrice">--</span>
+                        <span class="stock-change" id="analysisStockChange">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart Area -->
+            <div class="card chart-card" id="chartCard" style="display:none;">
+                <div class="card-header">
+                    <h3>K 線圖與均線</h3>
+                    <div class="chart-controls">
+                        <label class="toggle-label"><input type="checkbox" id="toggleMA5" checked> MA5</label>
+                        <label class="toggle-label"><input type="checkbox" id="toggleMA10" checked> MA10</label>
+                        <label class="toggle-label"><input type="checkbox" id="toggleMA20" checked> MA20</label>
+                        <label class="toggle-label"><input type="checkbox" id="toggleMA60"> MA60</label>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="candlestickChart" class="chart-container"></div>
+                    <div id="volumeChart" class="volume-chart-container"></div>
+                </div>
+            </div>
+
+            <!-- Indicator Charts -->
+            <div class="indicators-grid" id="indicatorsGrid" style="display:none;">
+                <div class="card indicator-card">
+                    <div class="card-header">
+                        <h3>RSI (14)</h3>
+                        <span class="indicator-value" id="rsiValue">--</span>
+                    </div>
+                    <div class="card-body">
+                        <div id="rsiChart" class="indicator-chart-container"></div>
+                    </div>
+                </div>
+                <div class="card indicator-card">
+                    <div class="card-header">
+                        <h3>MACD (12,26,9)</h3>
+                        <span class="indicator-value" id="macdValue">--</span>
+                    </div>
+                    <div class="card-body">
+                        <div id="macdChart" class="indicator-chart-container"></div>
+                    </div>
+                </div>
+                <div class="card indicator-card full-width">
+                    <div class="card-header">
+                        <h3>布林通道 (20,2)</h3>
+                        <span class="indicator-value" id="bollingerValue">--</span>
+                    </div>
+                    <div class="card-body">
+                        <div id="bollingerChart" class="indicator-chart-container"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analysis Empty State -->
+            <div class="analysis-empty" id="analysisEmpty">
+                <div class="empty-state large">
+                    <i data-lucide="candlestick-chart"></i>
+                    <h3>選擇一檔股票開始分析</h3>
+                    <p>在上方搜尋欄輸入股票代碼，即可查看 K 線圖、技術指標與趨勢分析</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Page: Signals -->
+        <section id="page-signals" class="page">
+            <div class="page-header">
+                <h1>買賣建議</h1>
+                <p class="page-subtitle">根據技術指標綜合分析，提供操作建議</p>
+            </div>
+
+            <!-- Watchlist Signals Overview -->
+            <div id="signalsOverview">
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-header">
+                        <h3>追蹤股票 — 信號總覽</h3>
+                        <button id="refreshSignalsBtn" class="btn btn-outline btn-sm">
+                            <i data-lucide="refresh-cw"></i>
+                            <span>重新分析</span>
+                        </button>
+                    </div>
+                    <div id="signalsOverviewContent" style="padding: 20px;">
+                        <div class="empty-state">
+                            <i data-lucide="zap"></i>
+                            <p>載入中...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Signal Modal (hidden by default) -->
+            <div id="signalModal" class="modal">
+                <div class="modal-overlay"></div>
+                <div class="modal-content">
+                    <button class="modal-close" id="closeSignalModal">
+                        <i data-lucide="x"></i>
+                    </button>
+
+                    <div id="signalResult">
+                        <!-- Stock Info Bar -->
+                        <div class="card" style="margin-bottom:16px; border:none; background:transparent">
+                            <div class="stock-info-header" style="padding:0">
+                                <div class="stock-info-left">
+                                    <h2 id="signalStockName">--</h2>
+                                    <span class="stock-code" id="signalStockCode">--</span>
+                                </div>
+                                <div class="stock-info-right">
+                                    <span class="stock-price" id="signalStockPrice">--</span>
+                                    <span class="stock-change" id="signalStockChange">--</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Overall Score -->
+                        <div class="signal-overview-grid">
+                            <div class="card signal-score-card" id="signalScoreCard">
+                                <div class="signal-score-ring">
+                                    <svg viewBox="0 0 120 120" class="score-ring-svg">
+                                        <circle cx="60" cy="60" r="50" class="ring-bg" />
+                                        <circle cx="60" cy="60" r="50" class="ring-fill" id="scoreRing" />
+                                    </svg>
+                                    <div class="score-text">
+                                        <span class="score-number" id="overallScore">--</span>
+                                        <span class="score-label">綜合評分</span>
+                                    </div>
+                                </div>
+                                <div class="signal-action" id="signalAction">
+                                    <span class="action-label">建議操作</span>
+                                    <span class="action-badge" id="actionBadge">--</span>
+                                </div>
+                            </div>
+
+                            <div class="card signal-detail-card">
+                                <div class="card-header">
+                                    <h3>指標信號明細</h3>
+                                </div>
+                                <div class="card-body">
+                                    <table class="signal-table" id="signalTable">
+                                        <thead>
+                                            <tr>
+                                                <th>指標</th>
+                                                <th>數值</th>
+                                                <th>信號</th>
+                                                <th>說明</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="signalTableBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Risk Analysis -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>風險分析</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="risk-meters" id="riskMeters"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="loading-spinner">
+            <div class="spinner-ring"></div>
+            <span>載入中...</span>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Scripts -->
+    <script src="js/api.js"></script>
+    <script src="js/indicators.js"></script>
+    <script src="js/charts.js"></script>
+    <script src="js/watchlist.js"></script>
+    <script src="js/app.js"></script>
+</body>
+
+</html>
