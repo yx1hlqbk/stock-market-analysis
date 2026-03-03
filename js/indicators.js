@@ -539,13 +539,13 @@ const Indicators = (() => {
         // Determine action
         let action, actionClass;
         if (overallScore >= 65) {
-            action = '建議買進';
+            action = '買進 / 加碼';
             actionClass = 'buy';
         } else if (overallScore <= 35) {
-            action = '建議賣出';
+            action = '減碼 / 賣出';
             actionClass = 'sell';
         } else {
-            action = '建議持有';
+            action = '續抱 / 觀望';
             actionClass = 'hold';
         }
 
