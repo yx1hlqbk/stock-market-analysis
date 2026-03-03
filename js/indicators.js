@@ -210,6 +210,52 @@ const Indicators = (() => {
     }
 
     /**
+     * KD (Stochastic Oscillator)
+     * @param {number[]} highs
+     * @param {number[]} lows
+     * @param {number[]} closes
+     * @param {number} period (default 9)
+     * @returns {{ k: number[], d: number[] }}
+     */
+    function calculateKD(highs, lows, closes, period = 9) {
+        const result = { k: [], d: [] };
+        let prevK = 50;
+        let prevD = 50;
+
+        for (let i = 0; i < closes.length; i++) {
+            if (i < period - 1) {
+                result.k.push(null);
+                result.d.push(null);
+                continue;
+            }
+
+            // Find highest high and lowest low over the period
+            let maxHigh = -Infinity;
+            let minLow = Infinity;
+            for (let j = 0; j < period; j++) {
+                if (highs[i - j] > maxHigh) maxHigh = highs[i - j];
+                if (lows[i - j] < minLow) minLow = lows[i - j];
+            }
+
+            let rsv = prevK;
+            if (maxHigh > minLow) {
+                rsv = ((closes[i] - minLow) / (maxHigh - minLow)) * 100;
+            }
+
+            const currentK = (2 / 3) * prevK + (1 / 3) * rsv;
+            const currentD = (2 / 3) * prevD + (1 / 3) * currentK;
+
+            result.k.push(currentK);
+            result.d.push(currentD);
+
+            prevK = currentK;
+            prevD = currentD;
+        }
+
+        return result;
+    }
+
+    /**
      * Generate comprehensive trading signals based on all indicators
      * @param {object} historyData - History data object from API
      * @returns {object} Signals analysis
@@ -238,9 +284,10 @@ const Indicators = (() => {
         const currentPrice = closes[lastIdx];
 
         const signals = [];
+        // New Weights Allocation (Max 100):
+        // MACD: 20, KD: 20, RSI: 15, Bollinger: 15, MA(Short): 10, MA(Long-term): 10, Volume: 10
         let buyScore = 0;
         let sellScore = 0;
-        const totalWeight = 0;
 
         // --- RSI Signal ---
         if (currentRSI !== null) {
@@ -249,10 +296,10 @@ const Indicators = (() => {
                     indicator: 'RSI (14)',
                     value: currentRSI.toFixed(2),
                     signal: 'buy',
-                    label: '買入',
+                    label: '買進',
                     description: `RSI ${currentRSI.toFixed(1)} < 30，處於超賣區域，可能反彈`
                 });
-                buyScore += 25;
+                buyScore += 15;
             } else if (currentRSI > 70) {
                 signals.push({
                     indicator: 'RSI (14)',
@@ -261,7 +308,7 @@ const Indicators = (() => {
                     label: '賣出',
                     description: `RSI ${currentRSI.toFixed(1)} > 70，處於超買區域，可能回檔`
                 });
-                sellScore += 25;
+                sellScore += 15;
             } else {
                 signals.push({
                     indicator: 'RSI (14)',
@@ -283,19 +330,19 @@ const Indicators = (() => {
                     indicator: 'MACD',
                     value: currentMACD.toFixed(2),
                     signal: 'buy',
-                    label: '買入',
-                    description: isBullishCross ? 'MACD 黃金交叉，多頭信號' : 'MACD 柱狀體放大，多頭動能增強'
+                    label: '買進',
+                    description: isBullishCross ? 'MACD 黃金交叉，較強多頭信號' : 'MACD 柱狀體放大，多頭動能增強'
                 });
-                buyScore += 30;
+                buyScore += 20;
             } else if (isBearishCross || (currentMACD < currentSignal && currentHist < 0 && currentHist < prevHist)) {
                 signals.push({
                     indicator: 'MACD',
                     value: currentMACD.toFixed(2),
                     signal: 'sell',
                     label: '賣出',
-                    description: isBearishCross ? 'MACD 死亡交叉，空頭信號' : 'MACD 柱狀體放大，空頭動能增強'
+                    description: isBearishCross ? 'MACD 死亡交叉，較強空頭信號' : 'MACD 柱狀體放大，空頭動能增強'
                 });
-                sellScore += 30;
+                sellScore += 20;
             } else {
                 signals.push({
                     indicator: 'MACD',
@@ -303,6 +350,46 @@ const Indicators = (() => {
                     signal: 'neutral',
                     label: '中性',
                     description: 'MACD 趨勢不明確'
+                });
+            }
+        }
+
+        // --- KD Signal ---
+        const kd = calculateKD(highs, lows, closes);
+        const currentK = kd.k[lastIdx];
+        const currentD = kd.d[lastIdx];
+        const prevK = kd.k[lastIdx - 1];
+        const prevD = kd.d[lastIdx - 1];
+
+        if (currentK !== null && currentD !== null) {
+            const isKdGoldenCross = (currentK > currentD) && (prevK <= prevD);
+            const isKdDeathCross = (currentK < currentD) && (prevK >= prevD);
+
+            if (isKdGoldenCross && currentK < 30) {
+                signals.push({
+                    indicator: 'KD (9,3,3)',
+                    value: `K: ${currentK.toFixed(1)}, D: ${currentD.toFixed(1)}`,
+                    signal: 'buy',
+                    label: '買進',
+                    description: '低檔黃金交叉 (K<30)，反彈機率高'
+                });
+                buyScore += 20;
+            } else if (isKdDeathCross && currentK > 70) {
+                signals.push({
+                    indicator: 'KD (9,3,3)',
+                    value: `K: ${currentK.toFixed(1)}, D: ${currentD.toFixed(1)}`,
+                    signal: 'sell',
+                    label: '賣出',
+                    description: '高檔死亡交叉 (K>70)，回檔風險大'
+                });
+                sellScore += 20;
+            } else {
+                signals.push({
+                    indicator: 'KD (9,3,3)',
+                    value: `K: ${currentK.toFixed(1)}, D: ${currentD.toFixed(1)}`,
+                    signal: 'neutral',
+                    label: '中性',
+                    description: '指標正常波動，未出現極端交叉'
                 });
             }
         }
@@ -315,19 +402,19 @@ const Indicators = (() => {
                     indicator: '布林通道',
                     value: `${bollinger.lower[lastIdx].toFixed(2)}`,
                     signal: 'buy',
-                    label: '買入',
-                    description: '價格觸及下軌，可能反彈回升'
+                    label: '買進',
+                    description: '價格觸及下軌，具備支撐反彈潛力'
                 });
-                buyScore += 20;
+                buyScore += 15;
             } else if (currentPrice >= bollinger.upper[lastIdx]) {
                 signals.push({
                     indicator: '布林通道',
                     value: `${bollinger.upper[lastIdx].toFixed(2)}`,
                     signal: 'sell',
                     label: '賣出',
-                    description: '價格觸及上軌，可能回檔修正'
+                    description: '價格觸及上軌，面臨壓力可能回檔'
                 });
-                sellScore += 20;
+                sellScore += 15;
             } else {
                 signals.push({
                     indicator: '布林通道',
@@ -339,7 +426,7 @@ const Indicators = (() => {
             }
         }
 
-        // --- Moving Average Signal ---
+        // --- Moving Average (MA5/MA20) Signal ---
         if (sma5[lastIdx] !== null && sma20[lastIdx] !== null) {
             const ma5Above20 = sma5[lastIdx] > sma20[lastIdx];
             const prevMa5Above20 = sma5[lastIdx - 1] > sma20[lastIdx - 1];
@@ -348,29 +435,63 @@ const Indicators = (() => {
 
             if (isGoldenCross || (currentPrice > sma5[lastIdx] && currentPrice > sma20[lastIdx])) {
                 signals.push({
-                    indicator: '均線 (MA5/MA20)',
+                    indicator: '短中期均線',
                     value: `MA5: ${sma5[lastIdx].toFixed(2)}`,
                     signal: 'buy',
-                    label: '買入',
-                    description: isGoldenCross ? 'MA5 上穿 MA20 黃金交叉' : '價格站上短期與中期均線之上'
+                    label: '偏多',
+                    description: isGoldenCross ? 'MA5 上穿 MA20 黃金交叉' : '股價站穩短期與中期均線之上'
                 });
-                buyScore += 15;
+                buyScore += 10;
             } else if (isDeathCross || (currentPrice < sma5[lastIdx] && currentPrice < sma20[lastIdx])) {
                 signals.push({
-                    indicator: '均線 (MA5/MA20)',
+                    indicator: '短中期均線',
                     value: `MA5: ${sma5[lastIdx].toFixed(2)}`,
                     signal: 'sell',
-                    label: '賣出',
-                    description: isDeathCross ? 'MA5 下穿 MA20 死亡交叉' : '價格跌破短期與中期均線'
+                    label: '偏空',
+                    description: isDeathCross ? 'MA5 下穿 MA20 死亡交叉' : '股價跌破短期與中期均線'
                 });
-                sellScore += 15;
+                sellScore += 10;
             } else {
                 signals.push({
-                    indicator: '均線 (MA5/MA20)',
+                    indicator: '短中期均線',
                     value: `MA5: ${sma5[lastIdx].toFixed(2)}`,
                     signal: 'neutral',
                     label: '中性',
-                    description: '均線交織，趨勢不明'
+                    description: '均線交織，多空膠著'
+                });
+            }
+        }
+
+        // --- MA60 (Quarterly Trend) Signal ---
+        if (sma60[lastIdx] !== null && sma60[lastIdx - 1] !== null) {
+            const currentMa60 = sma60[lastIdx];
+            const prevMa60 = sma60[lastIdx - 1];
+
+            if (currentPrice >= currentMa60 && currentMa60 >= prevMa60) {
+                signals.push({
+                    indicator: '季線趨勢 (MA60)',
+                    value: `${currentMa60.toFixed(2)}`,
+                    signal: 'buy',
+                    label: '偏多',
+                    description: '股價站上季線且季線上揚，長線偏多'
+                });
+                buyScore += 10;
+            } else if (currentPrice <= currentMa60 && currentMa60 <= prevMa60) {
+                signals.push({
+                    indicator: '季線趨勢 (MA60)',
+                    value: `${currentMa60.toFixed(2)}`,
+                    signal: 'sell',
+                    label: '偏空',
+                    description: '股價跌破季線且季線向下，長線偏空'
+                });
+                sellScore += 10;
+            } else {
+                signals.push({
+                    indicator: '季線趨勢 (MA60)',
+                    value: `${currentMa60.toFixed(2)}`,
+                    signal: 'neutral',
+                    label: '中性',
+                    description: '價格與季線糾結，長線方向待定'
                 });
             }
         }
@@ -381,22 +502,22 @@ const Indicators = (() => {
             const currentVol = volumes[lastIdx] || 0;
             const volRatio = currentVol / avgVol;
 
-            if (volRatio > 1.5 && closes[lastIdx] > closes[lastIdx - 1]) {
+            if (volRatio >= 1.5 && closes[lastIdx] > closes[lastIdx - 1]) {
                 signals.push({
                     indicator: '成交量',
                     value: `${volRatio.toFixed(1)}x 均量`,
                     signal: 'buy',
-                    label: '買入',
-                    description: '量增價漲，多頭確認'
+                    label: '強勢',
+                    description: '量增價漲，多頭帶量攻擊'
                 });
                 buyScore += 10;
-            } else if (volRatio > 1.5 && closes[lastIdx] < closes[lastIdx - 1]) {
+            } else if (volRatio >= 1.5 && closes[lastIdx] < closes[lastIdx - 1]) {
                 signals.push({
                     indicator: '成交量',
                     value: `${volRatio.toFixed(1)}x 均量`,
                     signal: 'sell',
-                    label: '賣出',
-                    description: '量增價跌，空頭確認'
+                    label: '弱勢',
+                    description: '量增價跌，空頭出貨壓力大'
                 });
                 sellScore += 10;
             } else {
@@ -405,7 +526,7 @@ const Indicators = (() => {
                     value: `${volRatio.toFixed(1)}x 均量`,
                     signal: 'neutral',
                     label: '中性',
-                    description: '成交量正常'
+                    description: '成交量位於正常範圍'
                 });
             }
         }
@@ -418,7 +539,7 @@ const Indicators = (() => {
         // Determine action
         let action, actionClass;
         if (overallScore >= 65) {
-            action = '建議買入';
+            action = '建議買進';
             actionClass = 'buy';
         } else if (overallScore <= 35) {
             action = '建議賣出';
