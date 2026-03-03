@@ -179,6 +179,36 @@ const App = (() => {
     }
 
     // ============================
+    // Search Results Rendering (Shared)
+    // ============================
+
+    function renderSearchResults(container, stocks, onSelect) {
+        if (stocks.length === 0) {
+            container.innerHTML = '<div class="search-result-item"><span class="stock-name">找不到相符的股票</span></div>';
+            container.classList.remove('hidden');
+            return;
+        }
+
+        container.innerHTML = stocks.map(stock => `
+            <div class="search-result-item" data-symbol="${stock.symbol}" data-name="${stock.name}">
+                <div>
+                    <span class="stock-symbol">${stock.symbol}</span>
+                    <span class="stock-name" style="margin-left: 8px;">${stock.name}</span>
+                </div>
+                <span class="stock-name">${stock.industry}</span>
+            </div>
+        `).join('');
+
+        container.querySelectorAll('.search-result-item').forEach(item => {
+            item.addEventListener('click', () => {
+                onSelect({ symbol: item.dataset.symbol, name: item.dataset.name });
+            });
+        });
+
+        container.classList.remove('hidden');
+    }
+
+    // ============================
     // Dashboard (Merged Watchlist)
     // ============================
 

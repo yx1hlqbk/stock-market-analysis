@@ -39,8 +39,8 @@ const StockAPI = (() => {
         openApiNames = new Map();
 
         try {
-            // Fetch TWSE (上市)
-            const twseRes = await fetch(TWSE_URL);
+            // Fetch TWSE (上市) via CORS Proxy
+            const twseRes = await fetch(`https://corsproxy.io/?${encodeURIComponent(TWSE_URL)}`);
             if (twseRes.ok) {
                 const twseData = await twseRes.json();
                 twseData.forEach(item => {
@@ -48,8 +48,8 @@ const StockAPI = (() => {
                 });
             }
 
-            // Fetch TPEx (上櫃)
-            const tpexRes = await fetch(TPEX_URL);
+            // Fetch TPEx (上櫃) via CORS Proxy
+            const tpexRes = await fetch(`https://corsproxy.io/?${encodeURIComponent(TPEX_URL)}`);
             if (tpexRes.ok) {
                 const tpexData = await tpexRes.json();
                 tpexData.forEach(item => {
