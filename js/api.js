@@ -12,6 +12,13 @@ const StockAPI = (() => {
     const cache = new Map();
     const CACHE_TTL = 60000; // 1 minute
 
+    // TWSE / TPEx Open API URLs
+    const TWSE_URL = 'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL';
+    const TPEX_URL = 'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes';
+
+    // In-memory cache for all Taiwan stock names fetched from Open APIs
+    let openApiNames = null;
+
     // Dynamic name cache for stocks not in the database
     const dynamicNameCache = new Map();
 
@@ -23,6 +30,38 @@ const StockAPI = (() => {
             Object.entries(parsed).forEach(([k, v]) => dynamicNameCache.set(k, v));
         }
     } catch (e) { }
+
+    /**
+     * Pre-fetch and cache all Taiwan stock names from Open APIs
+     */
+    async function fetchAllTaiwanStockNames() {
+        if (openApiNames) return openApiNames;
+        openApiNames = new Map();
+
+        try {
+            // Fetch TWSE (上市)
+            const twseRes = await fetch(TWSE_URL);
+            if (twseRes.ok) {
+                const twseData = await twseRes.json();
+                twseData.forEach(item => {
+                    openApiNames.set(item.Code, item.Name);
+                });
+            }
+
+            // Fetch TPEx (上櫃)
+            const tpexRes = await fetch(TPEX_URL);
+            if (tpexRes.ok) {
+                const tpexData = await tpexRes.json();
+                tpexData.forEach(item => {
+                    openApiNames.set(item.SecuritiesCompanyCode, item.CompanyName);
+                });
+            }
+        } catch (e) {
+            console.error('Error fetching Taiwan stock APIs for names', e);
+        }
+
+        return openApiNames;
+    }
 
     /**
      * Convert Taiwan stock code to Yahoo symbol
@@ -101,16 +140,25 @@ const StockAPI = (() => {
             const len = result.timestamp.length;
             const lastIdx = len - 1;
 
-            // Try to get name from API response
-            const apiName = meta.shortName || meta.longName || '';
-            if (apiName) {
-                saveStockName(originalCode, apiName);
+            // Resolve proper name
+            let stockName = getStockName(symbol);
+            if (stockName === originalCode) {
+                // Not in our custom dynamic cache yet, let's query Open APIs
+                await fetchAllTaiwanStockNames();
+                if (openApiNames && openApiNames.has(originalCode)) {
+                    stockName = openApiNames.get(originalCode);
+                    saveStockName(originalCode, stockName);
+                } else {
+                    // Fallback to Yahoo API name if Open API fails
+                    stockName = meta.shortName || meta.longName || originalCode;
+                    saveStockName(originalCode, stockName);
+                }
             }
 
             const quote = {
                 symbol: originalCode,
                 yahooSymbol: yahooSym,
-                name: getStockName(symbol),
+                name: stockName,
                 price: meta.regularMarketPrice,
                 previousClose: meta.chartPreviousClose || meta.previousClose,
                 change: meta.regularMarketPrice - (meta.chartPreviousClose || meta.previousClose),
