@@ -272,6 +272,7 @@ const App = (() => {
         });
 
         document.getElementById('refreshWatchlistBtn').addEventListener('click', async () => {
+            StockAPI.clearCache();
             showToast('正在更新報價...', 'info');
             await refreshWatchlistTable();
             showToast('報價已更新', 'success');
@@ -592,8 +593,10 @@ const App = (() => {
     // ============================
 
     function initSignalsPage() {
+
         // Refresh signals button
         document.getElementById('refreshSignalsBtn').addEventListener('click', () => {
+            StockAPI.clearCache();
             loadSignalsOverview(true);
         });
     }

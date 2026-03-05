@@ -4,13 +4,16 @@
  */
 
 const StockAPI = (() => {
-    // Yahoo Finance API proxy (CORS-friendly)
-    const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+    // Yahoo Finance API proxies (CORS-friendly) with failover
+    const CORS_PROXIES = [
+        'https://api.allorigins.win/raw?url=',
+        'https://corsproxy.io/?'
+    ];
     const YAHOO_BASE = 'https://query1.finance.yahoo.com/v8/finance';
 
     // Cache for API responses
     const cache = new Map();
-    const CACHE_TTL = 60000; // 1 minute
+    const CACHE_TTL = 300000; // 5 minutes
 
     // Dynamic name cache for stocks not in the database
     const dynamicNameCache = new Map();
@@ -57,13 +60,22 @@ const StockAPI = (() => {
     }
 
     /**
-     * Fetch with CORS proxy
+     * Fetch with CORS proxy rotation
      */
     async function fetchWithProxy(url) {
-        const proxyUrl = CORS_PROXY + encodeURIComponent(url);
-        const resp = await fetch(proxyUrl);
-        if (!resp.ok) throw new Error(`API error: ${resp.status}`);
-        return resp.json();
+        let lastError = null;
+        for (const proxyBase of CORS_PROXIES) {
+            try {
+                const proxyUrl = proxyBase + encodeURIComponent(url);
+                const resp = await fetch(proxyUrl);
+                if (!resp.ok) throw new Error(`API error HTTP ${resp.status}`);
+                return await resp.json();
+            } catch (err) {
+                console.warn(`Proxy ${proxyBase} failed:`, err);
+                lastError = err;
+            }
+        }
+        throw new Error(`All CORS proxies failed. Last error: ${lastError.message}`);
     }
 
     /**
@@ -261,6 +273,7 @@ const StockAPI = (() => {
         fetchMultipleQuotes,
         getStockName,
         saveStockName,
-        toYahooSymbol
+        toYahooSymbol,
+        clearCache: () => cache.clear()
     };
 })();
