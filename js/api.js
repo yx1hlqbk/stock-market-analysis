@@ -4,10 +4,7 @@
  */
 
 const StockAPI = (() => {
-    // Yahoo Finance API proxies (CORS-friendly) with failover
-    const CORS_PROXIES = [
-        'https://api.allorigins.win/raw?url='
-    ];
+    // Yahoo Finance base URL
     const YAHOO_BASE = 'https://query1.finance.yahoo.com/v8/finance';
 
     // Cache for API responses
@@ -32,8 +29,6 @@ const StockAPI = (() => {
     function toYahooSymbol(code) {
         code = code.trim().toUpperCase();
         if (code.endsWith('.TW') || code.endsWith('.TWO')) return code;
-
-        // If it's a number, default to .TW. fetch operations will retry with .TWO if needed.
         if (/^\d{4,6}$/.test(code)) return code + '.TW';
         return code;
     }
@@ -59,22 +54,56 @@ const StockAPI = (() => {
     }
 
     /**
-     * Fetch with CORS proxy rotation
+     * Fetch with timeout (abort after ms)
+     */
+    function fetchWithTimeout(url, ms = 10000) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), ms);
+        return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer));
+    }
+
+    /**
+     * Fetch via CORS proxy with multi-proxy failover and timeout.
+     * Strategy 1: allorigins JSON wrapper (parses .contents)
+     * Strategy 2: codetabs proxy
      */
     async function fetchWithProxy(url) {
+        const strategies = [
+            {
+                name: 'allorigins-json',
+                buildUrl: (u) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
+                parse: async (resp) => {
+                    const wrapper = await resp.json();
+                    if (!wrapper.contents) throw new Error('allorigins returned empty contents');
+                    return JSON.parse(wrapper.contents);
+                }
+            },
+            {
+                name: 'allorigins-raw',
+                buildUrl: (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+                parse: async (resp) => resp.json()
+            },
+            {
+                name: 'codetabs',
+                buildUrl: (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+                parse: async (resp) => resp.json()
+            }
+        ];
+
         let lastError = null;
-        for (const proxyBase of CORS_PROXIES) {
+        for (const strategy of strategies) {
             try {
-                const proxyUrl = proxyBase + encodeURIComponent(url);
-                const resp = await fetch(proxyUrl);
-                if (!resp.ok) throw new Error(`API error HTTP ${resp.status}`);
-                return await resp.json();
+                const proxyUrl = strategy.buildUrl(url);
+                const resp = await fetchWithTimeout(proxyUrl, 10000);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await strategy.parse(resp);
+                return data;
             } catch (err) {
-                console.warn(`Proxy ${proxyBase} failed:`, err);
+                console.warn(`[${strategy.name}] failed for ${url.slice(0, 60)}...:`, err.message);
                 lastError = err;
             }
         }
-        throw new Error(`All CORS proxies failed. Last error: ${lastError.message}`);
+        throw new Error(`All proxies failed. Last: ${lastError?.message}`);
     }
 
     /**

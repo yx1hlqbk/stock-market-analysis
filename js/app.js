@@ -50,7 +50,7 @@ const App = (() => {
         // Then pre-fetch history for each stock sequentially (for signals page)
         for (let i = 0; i < symbols.length; i++) {
             try {
-                await StockAPI.fetchHistory(symbols[i], '6mo');
+                await StockAPI.fetchHistory(symbols[i], '3mo');
             } catch (e) {
                 console.warn(`Pre-fetch history failed for ${symbols[i]}:`, e);
             }
@@ -317,7 +317,7 @@ const App = (() => {
             // Pre-fetch history again in background
             const syms = Watchlist.getSymbols();
             for (let i = 0; i < syms.length; i++) {
-                try { await StockAPI.fetchHistory(syms[i], '6mo'); } catch (e) { }
+                try { await StockAPI.fetchHistory(syms[i], '3mo'); } catch (e) { }
                 if (i < syms.length - 1) await new Promise(r => setTimeout(r, 300));
             }
             signalsLoaded = true;
@@ -555,7 +555,7 @@ const App = (() => {
             let signalHistData = histData;
             // Indicators need enough history, so fetch 6mo if current range is shorter
             if (currentAnalysisRange === '3mo') {
-                signalHistData = await StockAPI.fetchHistory(symbol, '6mo');
+                signalHistData = await StockAPI.fetchHistory(symbol, '3mo');
             }
             const analysis = Indicators.generateSignals(signalHistData);
 
@@ -648,7 +648,7 @@ const App = (() => {
             for (let i = 0; i < syms.length; i++) {
                 try {
                     await StockAPI.fetchQuote(syms[i]);
-                    await StockAPI.fetchHistory(syms[i], '6mo');
+                    await StockAPI.fetchHistory(syms[i], '3mo');
                 } catch (e) { }
                 if (i < syms.length - 1) await new Promise(r => setTimeout(r, 300));
             }
@@ -699,7 +699,7 @@ const App = (() => {
                 try {
                     const [quote, histData] = await Promise.all([
                         StockAPI.fetchQuote(sym),
-                        StockAPI.fetchHistory(sym, '6mo'),
+                        StockAPI.fetchHistory(sym, '3mo'),
                     ]);
                     const analysis = Indicators.generateSignals(histData);
                     results.push({ symbol: sym, quote, analysis, error: false });
@@ -817,7 +817,7 @@ const App = (() => {
         try {
             const [quoteData, histData] = await Promise.all([
                 StockAPI.fetchQuote(symbol),
-                StockAPI.fetchHistory(symbol, '6mo'),
+                StockAPI.fetchHistory(symbol, '3mo'),
             ]);
             const analysis = Indicators.generateSignals(histData);
 
