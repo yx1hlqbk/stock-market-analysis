@@ -12,7 +12,7 @@ const StockAPI = (() => {
 
     // Cache for API responses
     const cache = new Map();
-    const CACHE_TTL = 300000; // 5 minutes
+    const CACHE_TTL = Infinity; // Only cleared manually via clearCache()
 
     // Dynamic name cache for stocks not in the database
     const dynamicNameCache = new Map();
@@ -257,12 +257,23 @@ const StockAPI = (() => {
     }
 
     /**
-     * Fetch multiple quotes in parallel
+     * Fetch multiple quotes SEQUENTIALLY with delay to avoid rate limits
      */
     async function fetchMultipleQuotes(symbols) {
-        const promises = symbols.map(s => fetchQuote(s).catch(() => null));
-        const results = await Promise.all(promises);
-        return results.filter(r => r !== null);
+        const results = [];
+        for (let i = 0; i < symbols.length; i++) {
+            try {
+                const quote = await fetchQuote(symbols[i]);
+                results.push(quote);
+            } catch (e) {
+                console.warn(`Quote for ${symbols[i]} failed:`, e);
+            }
+            // Wait 300ms between requests to avoid rate limiting
+            if (i < symbols.length - 1) {
+                await new Promise(r => setTimeout(r, 300));
+            }
+        }
+        return results;
     }
 
     return {

@@ -9,6 +9,8 @@ const App = (() => {
     let currentAnalysisStock = null;
     let currentAnalysisRange = '3mo';
     let watchlistQuotes = [];
+    let dashboardLoaded = false;
+    let signalsLoaded = false;
 
     // ============================
     // Initialization
@@ -24,8 +26,39 @@ const App = (() => {
         initSignalsPage();
         initMobileNav();
 
-        // Load dashboard
-        refreshWatchlistTable();
+        // Load all data once on startup
+        initialDataLoad();
+    }
+
+    /**
+     * One-time data fetch on startup: quote + history for all tracked stocks.
+     * Requests are sent SEQUENTIALLY with delays to avoid proxy rate limits.
+     */
+    async function initialDataLoad() {
+        const symbols = Watchlist.getSymbols();
+        if (symbols.length === 0) {
+            dashboardLoaded = true;
+            signalsLoaded = true;
+            refreshWatchlistTable();
+            return;
+        }
+
+        // Fetch quotes sequentially first (renders dashboard)
+        await refreshWatchlistTable();
+        dashboardLoaded = true;
+
+        // Then pre-fetch history for each stock sequentially (for signals page)
+        for (let i = 0; i < symbols.length; i++) {
+            try {
+                await StockAPI.fetchHistory(symbols[i], '6mo');
+            } catch (e) {
+                console.warn(`Pre-fetch history failed for ${symbols[i]}:`, e);
+            }
+            if (i < symbols.length - 1) {
+                await new Promise(r => setTimeout(r, 300));
+            }
+        }
+        signalsLoaded = true;
     }
 
     function initIcons() {
@@ -156,7 +189,9 @@ const App = (() => {
         document.getElementById('sidebar').classList.remove('open');
 
         // Trigger page-specific actions
-        if (page === 'dashboard') refreshWatchlistTable();
+        if (page === 'dashboard') {
+            if (!dashboardLoaded) refreshWatchlistTable();
+        }
         if (page === 'signals') {
             document.getElementById('signalsOverview').style.display = 'block';
             loadSignalsOverview();
@@ -273,9 +308,19 @@ const App = (() => {
 
         document.getElementById('refreshWatchlistBtn').addEventListener('click', async () => {
             StockAPI.clearCache();
+            dashboardLoaded = false;
+            signalsLoaded = false;
             showToast('正在更新報價...', 'info');
             await refreshWatchlistTable();
+            dashboardLoaded = true;
             showToast('報價已更新', 'success');
+            // Pre-fetch history again in background
+            const syms = Watchlist.getSymbols();
+            for (let i = 0; i < syms.length; i++) {
+                try { await StockAPI.fetchHistory(syms[i], '6mo'); } catch (e) { }
+                if (i < syms.length - 1) await new Promise(r => setTimeout(r, 300));
+            }
+            signalsLoaded = true;
         });
 
         document.addEventListener('click', (e) => {
@@ -593,10 +638,22 @@ const App = (() => {
     // ============================
 
     function initSignalsPage() {
-
         // Refresh signals button
-        document.getElementById('refreshSignalsBtn').addEventListener('click', () => {
+        document.getElementById('refreshSignalsBtn').addEventListener('click', async () => {
             StockAPI.clearCache();
+            dashboardLoaded = false;
+            signalsLoaded = false;
+            // Re-fetch all data sequentially
+            const syms = Watchlist.getSymbols();
+            for (let i = 0; i < syms.length; i++) {
+                try {
+                    await StockAPI.fetchQuote(syms[i]);
+                    await StockAPI.fetchHistory(syms[i], '6mo');
+                } catch (e) { }
+                if (i < syms.length - 1) await new Promise(r => setTimeout(r, 300));
+            }
+            dashboardLoaded = true;
+            signalsLoaded = true;
             loadSignalsOverview(true);
         });
     }
@@ -635,21 +692,21 @@ const App = (() => {
         `;
 
         try {
-            // Fetch all data in parallel
-            const results = await Promise.all(
-                symbols.map(async (sym) => {
-                    try {
-                        const [quote, histData] = await Promise.all([
-                            StockAPI.fetchQuote(sym),
-                            StockAPI.fetchHistory(sym, '6mo'),
-                        ]);
-                        const analysis = Indicators.generateSignals(histData);
-                        return { symbol: sym, quote, analysis, error: false };
-                    } catch (err) {
-                        return { symbol: sym, quote: null, analysis: null, error: true };
-                    }
-                })
-            );
+            // Use CACHED data — no new API calls here.
+            // Data was pre-fetched during initialDataLoad() or manual refresh.
+            const results = [];
+            for (const sym of symbols) {
+                try {
+                    const [quote, histData] = await Promise.all([
+                        StockAPI.fetchQuote(sym),
+                        StockAPI.fetchHistory(sym, '6mo'),
+                    ]);
+                    const analysis = Indicators.generateSignals(histData);
+                    results.push({ symbol: sym, quote, analysis, error: false });
+                } catch (err) {
+                    results.push({ symbol: sym, quote: null, analysis: null, error: true });
+                }
+            }
 
             // Render card grid
             container.innerHTML = `
