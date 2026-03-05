@@ -602,6 +602,7 @@ const App = (() => {
      * Load signals overview for all tracked stocks
      */
     async function loadSignalsOverview(forceRefresh = false) {
+        if (forceRefresh) showLoading(true);
         const symbols = Watchlist.getSymbols();
         const container = document.getElementById('signalsOverviewContent');
 
@@ -617,6 +618,7 @@ const App = (() => {
                 el.addEventListener('click', () => navigateTo(el.getAttribute('data-page')));
             });
             initIcons();
+            if (forceRefresh) showLoading(false);
             return;
         }
 
@@ -743,6 +745,8 @@ const App = (() => {
         } catch (err) {
             console.error('Signals overview error:', err);
             showToast('載入信號總覽失敗', 'error');
+        } finally {
+            if (forceRefresh) showLoading(false);
         }
     }
 

@@ -5,7 +5,7 @@
 
 const StockAPI = (() => {
     // Yahoo Finance API proxy (CORS-friendly)
-    const CORS_PROXY = 'https://corsproxy.io/?';
+    const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
     const YAHOO_BASE = 'https://query1.finance.yahoo.com/v8/finance';
 
     // Cache for API responses
