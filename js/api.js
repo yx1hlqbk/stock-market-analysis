@@ -6,8 +6,7 @@
 const StockAPI = (() => {
     // Yahoo Finance API proxies (CORS-friendly) with failover
     const CORS_PROXIES = [
-        'https://api.allorigins.win/raw?url=',
-        'https://corsproxy.io/?'
+        'https://api.allorigins.win/raw?url='
     ];
     const YAHOO_BASE = 'https://query1.finance.yahoo.com/v8/finance';
 
@@ -85,7 +84,7 @@ const StockAPI = (() => {
         const originalCode = symbol.replace('.TW', '').replace('.TWO', '');
         let yahooSym = toYahooSymbol(symbol);
 
-        let cacheKey = `quote_${yahooSym}`;
+        let cacheKey = `quote_${originalCode}`;
         let cached = getCache(cacheKey);
         if (cached) return cached;
 
@@ -101,7 +100,6 @@ const StockAPI = (() => {
                     url = `${YAHOO_BASE}/chart/${tryTwo}?interval=1d&range=5d`;
                     data = await fetchWithProxy(url);
                     yahooSym = tryTwo;
-                    cacheKey = `quote_${yahooSym}`;
                 } else {
                     throw err;
                 }
@@ -156,8 +154,10 @@ const StockAPI = (() => {
      * Fetch historical data for analysis
      */
     async function fetchHistory(symbol, range = '6mo', interval = '1d') {
+        const originalCode = symbol.replace('.TW', '').replace('.TWO', '');
         let yahooSym = toYahooSymbol(symbol);
-        let cacheKey = `history_${yahooSym}_${range}_${interval}`;
+
+        let cacheKey = `history_${originalCode}_${range}_${interval}`;
         let cached = getCache(cacheKey);
         if (cached) return cached;
 
@@ -173,7 +173,6 @@ const StockAPI = (() => {
                     url = `${YAHOO_BASE}/chart/${tryTwo}?interval=${interval}&range=${range}`;
                     data = await fetchWithProxy(url);
                     yahooSym = tryTwo;
-                    cacheKey = `history_${yahooSym}_${range}_${interval}`;
                 } else {
                     throw err;
                 }
