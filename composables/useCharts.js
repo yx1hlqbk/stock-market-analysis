@@ -1,0 +1,252 @@
+export function useCharts() {
+  let mainChart = null
+  let mainSeries = null
+  let volumeChart = null
+  let volumeSeries = null
+  let maSeries = {}
+  let rsiChart = null
+  let macdChart = null
+  let bollingerChart = null
+
+  const CHART_COLORS = {
+    background: '#111827',
+    textColor: '#94a3b8',
+    gridColor: 'rgba(255,255,255,0.04)',
+    upColor: '#22c55e',
+    downColor: '#ef4444',
+    ma5Color: '#f59e0b',
+    ma10Color: '#6C5CE7',
+    ma20Color: '#00D2FF',
+    ma60Color: '#ec4899',
+  }
+
+  function getBaseOptions(container) {
+    return {
+      width: container.clientWidth,
+      height: container.clientHeight || 400,
+      layout: {
+        background: { type: 'solid', color: 'transparent' },
+        textColor: CHART_COLORS.textColor,
+        fontFamily: "'Inter', sans-serif",
+        fontSize: 11,
+      },
+      grid: {
+        vertLines: { color: CHART_COLORS.gridColor },
+        horzLines: { color: CHART_COLORS.gridColor },
+      },
+      crosshair: {
+        mode: 0,
+        vertLine: { labelBackgroundColor: '#6C5CE7' },
+        horzLine: { labelBackgroundColor: '#6C5CE7' },
+      },
+      timeScale: { borderColor: 'rgba(255,255,255,0.06)', timeVisible: false },
+      rightPriceScale: { borderColor: 'rgba(255,255,255,0.06)' },
+      handleScroll: true,
+      handleScale: true,
+    }
+  }
+
+  function renderCandlestickChart(container, data, LightweightCharts) {
+    if (mainChart) { mainChart.remove(); mainChart = null }
+    container.innerHTML = ''
+
+    mainChart = LightweightCharts.createChart(container, getBaseOptions(container))
+    mainSeries = mainChart.addCandlestickSeries({
+      upColor: CHART_COLORS.upColor,
+      downColor: CHART_COLORS.downColor,
+      borderUpColor: CHART_COLORS.upColor,
+      borderDownColor: CHART_COLORS.downColor,
+      wickUpColor: CHART_COLORS.upColor,
+      wickDownColor: CHART_COLORS.downColor,
+    })
+
+    mainSeries.setData(data.map(d => ({
+      time: d.time, open: d.open, high: d.high, low: d.low, close: d.close,
+    })))
+    mainChart.timeScale().fitContent()
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (mainChart) mainChart.applyOptions({ width: container.clientWidth })
+    })
+    resizeObserver.observe(container)
+    return mainChart
+  }
+
+  function renderVolumeChart(container, data, LightweightCharts) {
+    if (volumeChart) { volumeChart.remove(); volumeChart = null }
+    container.innerHTML = ''
+
+    volumeChart = LightweightCharts.createChart(container, {
+      ...getBaseOptions(container),
+      height: container.clientHeight || 100,
+    })
+
+    volumeSeries = volumeChart.addHistogramSeries({
+      priceFormat: { type: 'volume' },
+      priceScaleId: '',
+    })
+
+    volumeSeries.setData(data.map(d => ({
+      time: d.time,
+      value: d.volume || 0,
+      color: d.close >= d.open ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)',
+    })))
+    volumeChart.timeScale().fitContent()
+
+    if (mainChart) {
+      mainChart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+        if (range && volumeChart) volumeChart.timeScale().setVisibleLogicalRange(range)
+      })
+      volumeChart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+        if (range && mainChart) mainChart.timeScale().setVisibleLogicalRange(range)
+      })
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (volumeChart) volumeChart.applyOptions({ width: container.clientWidth })
+    })
+    resizeObserver.observe(container)
+  }
+
+  function addMovingAverages(data, options, indicators) {
+    if (!mainChart) return
+
+    Object.keys(maSeries).forEach(key => {
+      try { mainChart.removeSeries(maSeries[key]) } catch {}
+    })
+    maSeries = {}
+
+    const closes = data.map(d => d.close)
+    const times = data.map(d => d.time)
+
+    const maConfigs = [
+      { key: 'ma5', period: 5, color: CHART_COLORS.ma5Color, enabled: options.ma5 !== false },
+      { key: 'ma10', period: 10, color: CHART_COLORS.ma10Color, enabled: options.ma10 !== false },
+      { key: 'ma20', period: 20, color: CHART_COLORS.ma20Color, enabled: options.ma20 !== false },
+      { key: 'ma60', period: 60, color: CHART_COLORS.ma60Color, enabled: options.ma60 === true },
+    ]
+
+    maConfigs.forEach(({ key, period, color, enabled }) => {
+      if (!enabled) return
+      const sma = indicators.calculateSMA(closes, period)
+      const lineData = sma.map((val, i) => val === null ? null : { time: times[i], value: val }).filter(Boolean)
+      if (lineData.length > 0) {
+        const series = mainChart.addLineSeries({
+          color, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+        })
+        series.setData(lineData)
+        maSeries[key] = series
+      }
+    })
+  }
+
+  function renderRSIChart(container, data, LightweightCharts, indicators) {
+    if (rsiChart) { rsiChart.remove(); rsiChart = null }
+    container.innerHTML = ''
+
+    rsiChart = LightweightCharts.createChart(container, {
+      ...getBaseOptions(container),
+      height: container.clientHeight || 200,
+    })
+
+    const closes = data.map(d => d.close)
+    const times = data.map(d => d.time)
+    const rsiValues = indicators.calculateRSI(closes)
+
+    const rsiSeries = rsiChart.addLineSeries({ color: '#6C5CE7', lineWidth: 2, priceLineVisible: false })
+    const rsiData = rsiValues.map((val, i) => val === null ? null : { time: times[i], value: val }).filter(Boolean)
+    rsiSeries.setData(rsiData)
+
+    const overbought = rsiChart.addLineSeries({ color: 'rgba(239, 68, 68, 0.3)', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false })
+    overbought.setData(rsiData.map(d => ({ time: d.time, value: 70 })))
+
+    const oversold = rsiChart.addLineSeries({ color: 'rgba(34, 197, 94, 0.3)', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false })
+    oversold.setData(rsiData.map(d => ({ time: d.time, value: 30 })))
+
+    rsiChart.timeScale().fitContent()
+    const resizeObserver = new ResizeObserver(() => { if (rsiChart) rsiChart.applyOptions({ width: container.clientWidth }) })
+    resizeObserver.observe(container)
+
+    return rsiValues[rsiValues.length - 1]
+  }
+
+  function renderMACDChart(container, data, LightweightCharts, indicators) {
+    if (macdChart) { macdChart.remove(); macdChart = null }
+    container.innerHTML = ''
+
+    macdChart = LightweightCharts.createChart(container, {
+      ...getBaseOptions(container),
+      height: container.clientHeight || 200,
+    })
+
+    const closes = data.map(d => d.close)
+    const times = data.map(d => d.time)
+    const macdData = indicators.calculateMACD(closes)
+
+    const histSeries = macdChart.addHistogramSeries({ priceFormat: { type: 'price', precision: 2 }, priceLineVisible: false })
+    histSeries.setData(macdData.histogram.map((val, i) => val === null ? null : { time: times[i], value: val, color: val >= 0 ? 'rgba(34, 197, 94, 0.5)' : 'rgba(239, 68, 68, 0.5)' }).filter(Boolean))
+
+    const macdLine = macdChart.addLineSeries({ color: '#6C5CE7', lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false })
+    macdLine.setData(macdData.macd.map((val, i) => val === null ? null : { time: times[i], value: val }).filter(Boolean))
+
+    const signalLine = macdChart.addLineSeries({ color: '#f59e0b', lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false })
+    signalLine.setData(macdData.signal.map((val, i) => val === null ? null : { time: times[i], value: val }).filter(Boolean))
+
+    macdChart.timeScale().fitContent()
+    const resizeObserver = new ResizeObserver(() => { if (macdChart) macdChart.applyOptions({ width: container.clientWidth }) })
+    resizeObserver.observe(container)
+
+    return macdData.macd[macdData.macd.length - 1]
+  }
+
+  function renderBollingerChart(container, data, LightweightCharts, indicators) {
+    if (bollingerChart) { bollingerChart.remove(); bollingerChart = null }
+    container.innerHTML = ''
+
+    bollingerChart = LightweightCharts.createChart(container, {
+      ...getBaseOptions(container),
+      height: container.clientHeight || 200,
+    })
+
+    const closes = data.map(d => d.close)
+    const times = data.map(d => d.time)
+    const bb = indicators.calculateBollingerBands(closes)
+
+    const priceLine = bollingerChart.addLineSeries({ color: '#f1f5f9', lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false })
+    priceLine.setData(closes.map((v, i) => ({ time: times[i], value: v })))
+
+    const upperLine = bollingerChart.addLineSeries({ color: 'rgba(239, 68, 68, 0.6)', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false })
+    upperLine.setData(bb.upper.map((val, i) => val === null ? null : { time: times[i], value: val }).filter(Boolean))
+
+    const middleLine = bollingerChart.addLineSeries({ color: 'rgba(0, 210, 255, 0.5)', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false })
+    middleLine.setData(bb.middle.map((val, i) => val === null ? null : { time: times[i], value: val }).filter(Boolean))
+
+    const lowerLine = bollingerChart.addLineSeries({ color: 'rgba(34, 197, 94, 0.6)', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false })
+    lowerLine.setData(bb.lower.map((val, i) => val === null ? null : { time: times[i], value: val }).filter(Boolean))
+
+    bollingerChart.timeScale().fitContent()
+    const resizeObserver = new ResizeObserver(() => { if (bollingerChart) bollingerChart.applyOptions({ width: container.clientWidth }) })
+    resizeObserver.observe(container)
+
+    const lastIdx = bb.upper.length - 1
+    return bb.upper[lastIdx] ? `${bb.lower[lastIdx].toFixed(1)} - ${bb.upper[lastIdx].toFixed(1)}` : '--'
+  }
+
+  function destroyAll() {
+    ;[mainChart, volumeChart, rsiChart, macdChart, bollingerChart].forEach(chart => {
+      if (chart) { try { chart.remove() } catch {} }
+    })
+    mainChart = volumeChart = rsiChart = macdChart = bollingerChart = null
+    maSeries = {}
+  }
+
+  return {
+    renderCandlestickChart,
+    renderVolumeChart,
+    addMovingAverages,
+    renderRSIChart,
+    renderMACDChart,
+    renderBollingerChart,
+    destroyAll,
+  }
+}
